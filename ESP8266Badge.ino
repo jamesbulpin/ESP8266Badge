@@ -22,6 +22,8 @@ Adafruit_NeoPixel strip = Adafruit_NeoPixel(WS2811_LED_COUNT, WS2811_PIN /*, NEO
 
 #include "config.h" // Local wifi, API, and other configuration
 
+String fetchUrl = String(API_ENDPOINT) + String("?deviceid=") + WiFi.macAddress();
+
 void startWiFi() {
   WiFi.mode(WIFI_STA);
   WiFi.disconnect();
@@ -65,6 +67,8 @@ void startWiFi() {
   USE_SERIAL.println(WiFi.SSID());
   USE_SERIAL.print("IP: ");
   USE_SERIAL.println(WiFi.localIP());
+  USE_SERIAL.print("MAC: ");
+  USE_SERIAL.println(WiFi.macAddress());
 }
 
 void setup() {
@@ -74,7 +78,7 @@ void setup() {
 
   // Initialize LEDs to off
   for (int i = 0; i < WS2811_LED_COUNT; i++) {
-    strip.setPixelColor(i, strip.Color(255, 255, 0));
+    strip.setPixelColor(i, strip.Color(0, 0, 0));
   }
   strip.show();
   
@@ -89,6 +93,9 @@ void setup() {
   delay(1000);
 
   startWiFi();
+
+  USE_SERIAL.print("API: ");
+  USE_SERIAL.println(fetchUrl);
 }
 
 // Interval definitions
@@ -114,15 +121,18 @@ char remainingText[50];
 // expressed as millis() until we stop showing the logo.
 unsigned long showLogoUntil = 0;
 
+void setColor(const char *hex) {
+  long colval = (long)strtol(hex+1, NULL, 16);
+  for (int j = 0; j < WS2811_LED_COUNT; j++) {
+    strip.setPixelColor(j, strip.Color(colval >> 16, colval >> 8 & 0xFF, colval & 0xFF));
+  }
+  strip.show();
+}
+
 void loop() {
   unsigned long currentMillis = millis();
   unsigned long currentSecs = currentMillis / 1000;
   static boolean wifiConnected = false;
-
-  int x = (currentMillis >> 3) & 255;
-  if (currentMillis & 2048) x = 255 - x;
-  strip.setPixelColor(0, strip.Color(x, x, x));
-  strip.show();
 
   // Refresh the display event 250ms
   if (currentMillis - prevDisplay > intervalDisplay) {
@@ -183,7 +193,7 @@ void loop() {
       HTTPClient http;
 
       // The second argument here is the SSL fingerprint
-      http.begin(API_ENDPOINT, API_ENDPOINT_CERT_FINGERPRINT);
+      http.begin(fetchUrl, API_ENDPOINT_CERT_FINGERPRINT);
       int httpCode = http.GET();
 
       if (httpCode > 0) {
@@ -198,22 +208,27 @@ void loop() {
           if (!root.success()) {
             USE_SERIAL.println("parseObject() failed");
           }
-          else if (root.containsKey("description")) {
-            if (strcmp(description, root["description"]) != 0) {
-              // New text, show the logo for a few seconds before changing
-              showLogoUntil = currentMillis + 3000;
-            }
-            strncpy(description, root["description"], 19);
+          else {
+            if (root.containsKey("description")) {
+              if (strcmp(description, root["description"]) != 0) {
+                // New text, show the logo for a few seconds before changing
+                showLogoUntil = currentMillis + 3000;
+              }
+              strncpy(description, root["description"], 19);
 
-            // The service returns the number of seconds until the event. Add the number of seconds
-            // returned by millis() to get our target time. This avaoid us having to know the
-            // actual time.
-            timerTarget = root["remaining"].as<unsigned long>() + currentMillis/1000;
-            display.display();
-          }
-          else if (root.containsKey("text")) {
-            strncpy(description, root["text"], 19);
-            timerTarget = 0;
+              // The service returns the number of seconds until the event. Add the number of seconds
+              // returned by millis() to get our target time. This avaoid us having to know the
+              // actual time.
+              timerTarget = root["remaining"].as<unsigned long>() + currentMillis/1000;
+              display.display();
+            }
+            else if (root.containsKey("text")) {
+              strncpy(description, root["text"], 19);
+              timerTarget = 0;
+            }
+            if (root.containsKey("color")) {
+              setColor(root["color"]);
+            }
           }
         }
       } else {
