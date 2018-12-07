@@ -12,7 +12,7 @@
 
 #define USE_SERIAL Serial
 
-#define WS2811_PIN 0
+#define WS2811_PIN 13
 #define WS2811_LED_COUNT 1
 
 ESP8266WiFiMulti WiFiMulti;
@@ -24,7 +24,34 @@ Adafruit_NeoPixel strip = Adafruit_NeoPixel(WS2811_LED_COUNT, WS2811_PIN /*, NEO
 
 void startWiFi() {
   WiFi.mode(WIFI_STA);
-  setupLocalWifiConfig(WiFiMulti);
+  WiFi.disconnect();
+  delay(100);
+
+  // From https://github.com/esp8266/Arduino/blob/master/libraries/ESP8266WiFi/examples/WiFiScan/WiFiScan.ino
+  int n = WiFi.scanNetworks();
+  USE_SERIAL.println("scan done");
+  if (n == 0) {
+    USE_SERIAL.println("no networks found");
+  } else {
+    USE_SERIAL.print(n);
+    USE_SERIAL.println(" networks found");
+    for (int i = 0; i < n; ++i) {
+      // Print SSID and RSSI for each network found
+      USE_SERIAL.print(i + 1);
+      USE_SERIAL.print(": ");
+      USE_SERIAL.print(WiFi.SSID(i));
+      USE_SERIAL.print(" (");
+      USE_SERIAL.print(WiFi.RSSI(i));
+      USE_SERIAL.print(")");
+      USE_SERIAL.println((WiFi.encryptionType(i) == ENC_TYPE_NONE) ? " " : "*");
+      delay(10);
+    }
+  }
+  USE_SERIAL.println("");
+
+  delay(1000);
+
+  setupLocalWifiConfig(&WiFiMulti);
   //WiFiMulti.addAP("<SSID>", "<PSK>");
 
   // Wait for WiFi connection
@@ -47,7 +74,7 @@ void setup() {
 
   // Initialize LEDs to off
   for (int i = 0; i < WS2811_LED_COUNT; i++) {
-    strip.setPixelColor(i, strip.Color(255, 0, 0));
+    strip.setPixelColor(i, strip.Color(255, 255, 0));
   }
   strip.show();
   
@@ -56,6 +83,7 @@ void setup() {
   display.flipScreenVertically();
   display.setFont(ArialMT_Plain_16);
   display.drawXbm(0, 0, citrix_logo_width, citrix_logo_height, citrix_logo);
+  display.setPixel(127,0);
   display.display();
 
   delay(1000);
@@ -89,14 +117,20 @@ unsigned long showLogoUntil = 0;
 void loop() {
   unsigned long currentMillis = millis();
   unsigned long currentSecs = currentMillis / 1000;
+  static boolean wifiConnected = false;
+
+  int x = (currentMillis >> 3) & 255;
+  if (currentMillis & 2048) x = 255 - x;
+  strip.setPixelColor(0, strip.Color(x, x, x));
+  strip.show();
 
   // Refresh the display event 250ms
   if (currentMillis - prevDisplay > intervalDisplay) {
     prevDisplay = currentMillis;
 
     // Only update the display if we have a valid event description and target time
+    display.clear();
     if (strlen(description) > 0) {
-      display.clear();
       if (currentMillis < showLogoUntil) {
         // Show the Citrix logo
         display.drawXbm(0, 0, citrix_logo_width, citrix_logo_height, citrix_logo);        
@@ -128,59 +162,66 @@ void loop() {
         }
       }
     }
+    if (!wifiConnected) {
+        display.setPixel(127,0);
+    }
     display.display();
   }
 
   // Refetch the event description and remaining time every minute
-  if (((currentMillis - prevHTTP > intervalHTTP) || (prevHTTP == 0)) && (WiFiMulti.run() == WL_CONNECTED)) {
-    USE_SERIAL.print("SSID: ");
-    USE_SERIAL.println(WiFi.SSID());
-    USE_SERIAL.print("IP: ");
-    USE_SERIAL.println(WiFi.localIP());
+  if ((currentMillis - prevHTTP > intervalHTTP) || (prevHTTP == 0)) {
+    wifiConnected = (WiFiMulti.run() == WL_CONNECTED);
+
+    if (wifiConnected) {
+      USE_SERIAL.print("SSID: ");
+      USE_SERIAL.println(WiFi.SSID());
+      USE_SERIAL.print("IP: ");
+      USE_SERIAL.println(WiFi.localIP());
   
-    prevHTTP = currentMillis;
+      prevHTTP = currentMillis;
 
-    HTTPClient http;
+      HTTPClient http;
 
-    // The second argument here is the SSL fingerprint
-    http.begin(API_ENDPOINT, API_ENDPOINT_CERT_FINGERPRINT);
-    int httpCode = http.GET();
+      // The second argument here is the SSL fingerprint
+      http.begin(API_ENDPOINT, API_ENDPOINT_CERT_FINGERPRINT);
+      int httpCode = http.GET();
 
-    if (httpCode > 0) {
-      USE_SERIAL.printf("HTTP GET code: %d\n", httpCode);
+      if (httpCode > 0) {
+        USE_SERIAL.printf("HTTP GET code: %d\n", httpCode);
 
-      if (httpCode == HTTP_CODE_OK) {
-        String payload = http.getString();
-        USE_SERIAL.println(payload);
-        jsonBuffer.clear();
-        // Todo - check for buffer overrun for jsonBuffer
-        JsonObject& root = jsonBuffer.parseObject(payload);
-        if (!root.success()) {
-          USE_SERIAL.println("parseObject() failed");
-        }
-        else if (root.containsKey("description")) {
-          if (strcmp(description, root["description"]) != 0) {
-            // New text, show the logo for a few seconds before changing
-            showLogoUntil = currentMillis + 3000;
+        if (httpCode == HTTP_CODE_OK) {
+          String payload = http.getString();
+          USE_SERIAL.println(payload);
+          jsonBuffer.clear();
+          // Todo - check for buffer overrun for jsonBuffer
+          JsonObject& root = jsonBuffer.parseObject(payload);
+          if (!root.success()) {
+            USE_SERIAL.println("parseObject() failed");
           }
-          strncpy(description, root["description"], 19);
+          else if (root.containsKey("description")) {
+            if (strcmp(description, root["description"]) != 0) {
+              // New text, show the logo for a few seconds before changing
+              showLogoUntil = currentMillis + 3000;
+            }
+            strncpy(description, root["description"], 19);
 
-          // The service returns the number of seconds until the event. Add the number of seconds
-          // returned by millis() to get our target time. This avaoid us having to know the
-          // actual time.
-          timerTarget = root["remaining"].as<unsigned long>() + currentMillis/1000;
-          display.display();
+            // The service returns the number of seconds until the event. Add the number of seconds
+            // returned by millis() to get our target time. This avaoid us having to know the
+            // actual time.
+            timerTarget = root["remaining"].as<unsigned long>() + currentMillis/1000;
+            display.display();
+          }
+          else if (root.containsKey("text")) {
+            strncpy(description, root["text"], 19);
+            timerTarget = 0;
+          }
         }
-        else if (root.containsKey("text")) {
-          strncpy(description, root["text"], 19);
-          timerTarget = 0;
-        }
+      } else {
+        USE_SERIAL.printf("HTTP GET failed, error: %s\n", http.errorToString(httpCode).c_str());
       }
-    } else {
-      USE_SERIAL.printf("HTTP GET failed, error: %s\n", http.errorToString(httpCode).c_str());
-    }
 
-    http.end();
+      http.end();
+    }
   }
 
   delay(10);
