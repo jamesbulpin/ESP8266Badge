@@ -9,6 +9,7 @@
 #include "SSD1306.h"
 #include <ArduinoJson.h>
 #include "citrix.h"
+#include "font.h"
 
 #define USE_SERIAL Serial
 
@@ -154,15 +155,15 @@ void loop() {
           unsigned long minutes = (remaining%3600)/60;
           unsigned long seconds = remaining%60;
           sprintf(remainingText, "%u %s %u:%02u", days, (days==1)?"day":"days", hours, minutes);
-          display.setFont(ArialMT_Plain_16);
+          display.setFont(Dialog_plain_14);
           display.drawString(0, 0, remainingText);
           int16_t x = display.getStringWidth(remainingText);
           display.setFont(ArialMT_Plain_10);
           sprintf(remainingText, ":%02u", seconds);
-          display.drawString(x, 5, remainingText);          
-          display.drawString(0, 21, "Until");
+          display.drawString(x, 3, remainingText);          
+          display.drawString(0, 19, "Until");
           int indent = display.getStringWidth("Until ");
-          display.setFont(ArialMT_Plain_16);
+          display.setFont(Dialog_plain_14);
           display.drawString(indent, 16, description);
         }
         else {
