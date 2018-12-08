@@ -134,6 +134,7 @@ void loop() {
   unsigned long currentMillis = millis();
   unsigned long currentSecs = currentMillis / 1000;
   static boolean wifiConnected = false;
+  static boolean lastFlip = true;
 
   if (USE_SERIAL.available()) {
     char c = USE_SERIAL.read();
@@ -226,12 +227,18 @@ void loop() {
           else {
             if (root.containsKey("cfgflip")) {
               if (root["cfgflip"] == "u") {
-                display.init();
-                display.resetOrientation();
+                if (lastFlip) {
+                  display.init();
+                  display.resetOrientation();
+                  lastFlip = false;
+                }
               }
               else if (root["cfgflip"] == "f") {
-                display.init();
-                display.flipScreenVertically();
+                if (!lastFlip) {
+                  display.init();
+                  display.flipScreenVertically();
+                  lastFlip = true;
+                }
               }
             }
             if (root.containsKey("description")) {
