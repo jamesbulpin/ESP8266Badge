@@ -135,6 +135,20 @@ void loop() {
   unsigned long currentSecs = currentMillis / 1000;
   static boolean wifiConnected = false;
 
+  if (USE_SERIAL.available()) {
+    char c = USE_SERIAL.read();
+    switch (c) {
+    case 'f':
+      display.init();
+      display.flipScreenVertically();
+      break;
+    case 'u':
+      display.init();
+      display.resetOrientation();
+      break;
+    }
+  }
+  
   // Refresh the display event 250ms
   if (currentMillis - prevDisplay > intervalDisplay) {
     prevDisplay = currentMillis;
@@ -210,6 +224,16 @@ void loop() {
             USE_SERIAL.println("parseObject() failed");
           }
           else {
+            if (root.containsKey("cfgflip")) {
+              if (root["cfgflip"] == "u") {
+                display.init();
+                display.resetOrientation();
+              }
+              else if (root["cfgflip"] == "f") {
+                display.init();
+                display.flipScreenVertically();
+              }
+            }
             if (root.containsKey("description")) {
               if (strcmp(description, root["description"]) != 0) {
                 // New text, show the logo for a few seconds before changing
