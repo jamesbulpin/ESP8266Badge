@@ -114,6 +114,7 @@ unsigned long timerTarget = 0;
 
 // Buffer to hold the event description string
 char description[20];
+char text2[20];
 
 // Buffer to build strings to display
 char remainingText[50];
@@ -183,8 +184,15 @@ void loop() {
         }
         else {
           // Just show the text message
-          display.setFont(ArialMT_Plain_16);
-          display.drawString(0, 8, description);
+          if (text2[0]) {
+            display.setFont(Dialog_plain_14);
+            display.drawString(0, 0, description);
+            display.drawString(0, 16, text2);
+          }
+          else {
+            display.setFont(ArialMT_Plain_16);
+            display.drawString(0, 8, description);
+          }
         }
       }
     }
@@ -257,6 +265,12 @@ void loop() {
             else if (root.containsKey("text")) {
               strncpy(description, root["text"], 19);
               timerTarget = 0;
+            }
+            if (root.containsKey("text2")) {
+              strncpy(text2, root["text2"], 19);
+            }
+            else {
+              text2[0] = '\0';
             }
             if (root.containsKey("color")) {
               setColor(root["color"]);
