@@ -16,6 +16,8 @@
 #define WS2811_PIN 13
 #define WS2811_LED_COUNT 1
 
+#define BUTTON_PIN 12
+
 ESP8266WiFiMulti WiFiMulti;
 
 SSD1306 display(0x3c, SDA, SCL, OLED_RST, GEOMETRY_128_32);
@@ -73,6 +75,8 @@ void startWiFi() {
 }
 
 void setup() {
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+  
   USE_SERIAL.begin(115200);
 
   strip.begin();
@@ -97,6 +101,8 @@ void setup() {
 
   USE_SERIAL.print("API: ");
   USE_SERIAL.println(fetchUrl);
+
+  attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), handleButtonInterrupt, FALLING);
 }
 
 // Interval definitions
@@ -123,6 +129,10 @@ char remainingText[50];
 // expressed as millis() until we stop showing the logo.
 unsigned long showLogoUntil = 0;
 
+// When showing the mode change, this is the time
+// expressed as millis() until we stop showing the change.
+unsigned long showModeChangeUntil = 0;
+
 void setColor(const char *hex) {
   long colval = (long)strtol(hex+1, NULL, 16);
   for (int j = 0; j < WS2811_LED_COUNT; j++) {
@@ -131,11 +141,80 @@ void setColor(const char *hex) {
   strip.show();
 }
 
+volatile byte interruptCounter = 0;
+void handleButtonInterrupt() {
+  interruptCounter++;
+}
+
+#define NUM_DISPLAY_MODES 5
+char *displayModeNames[] = {
+  "Cloud",
+  "Cycle",
+  "SYN130",
+  "Expo",
+  "Logo"
+};
+
+char *displayModeColors[] = {
+  NULL,
+  NULL,
+  "#00ff00",
+  "#0000ff",
+  "#00ffff"
+};
+
+void fnCycle();
+
+void fn2() {
+  display.setFont(Dialog_plain_14);
+  display.drawString(0, 0, "Join us at SYN130");
+  display.setFont(ArialMT_Plain_10);
+  display.drawString(0, 19, "#FutureOfWork 3pm");
+}
+
+void fn3() {
+  display.setFont(Dialog_plain_14);
+  display.drawString(0, 0, "See innovation!");
+  display.setFont(ArialMT_Plain_10);
+  display.drawString(0, 19, "Citrix Experience Center");
+}
+
+void fn4() {
+  display.drawXbm(0, 0, citrix_logo_width, citrix_logo_height, citrix_logo);
+}
+
+typedef void (*fn)();
+fn displayFunctions[] = {
+  NULL,
+  fnCycle,
+  fn2,
+  fn3,
+  fn4
+};
+
+void fnCycle() {
+  static unsigned long showThisUntil = 0;
+  static byte toShow = 2;
+  unsigned long currentMillis = millis();
+  if (currentMillis > showThisUntil) {
+    showThisUntil = currentMillis + 8000;
+    toShow++;
+    if (toShow == NUM_DISPLAY_MODES) {
+      toShow = 2;
+    }
+  }
+  displayFunctions[toShow]();
+  if (displayModeColors[toShow]) {
+    setColor(displayModeColors[toShow]);
+  }
+}
+
 void loop() {
   unsigned long currentMillis = millis();
   unsigned long currentSecs = currentMillis / 1000;
   static boolean wifiConnected = false;
   static boolean lastFlip = true;
+  static byte displayMode = 0;
 
   if (USE_SERIAL.available()) {
     char c = USE_SERIAL.read();
@@ -150,6 +229,18 @@ void loop() {
       break;
     }
   }
+
+  if (interruptCounter) {
+    interruptCounter = 0;
+    displayMode++;
+    if (displayMode == NUM_DISPLAY_MODES) {
+      displayMode = 0;
+    }
+    showModeChangeUntil = currentMillis + 2000;
+    if (displayModeColors[displayMode]) {
+      setColor(displayModeColors[displayMode]);
+    }
+  }
   
   // Refresh the display event 250ms
   if (currentMillis - prevDisplay > intervalDisplay) {
@@ -161,6 +252,14 @@ void loop() {
       if (currentMillis < showLogoUntil) {
         // Show the Citrix logo
         display.drawXbm(0, 0, citrix_logo_width, citrix_logo_height, citrix_logo);        
+      }
+      else if (currentMillis < showModeChangeUntil) {
+        sprintf(remainingText, "Mode: %s", displayModeNames[displayMode]);
+        display.setFont(Dialog_plain_14);
+        display.drawString(8, 0, remainingText);
+      }
+      else if (displayMode > 0) {
+        displayFunctions[displayMode]();
       }
       else {
         if (timerTarget > 0) {
@@ -203,7 +302,7 @@ void loop() {
   }
 
   // Refetch the event description and remaining time every minute
-  if ((currentMillis - prevHTTP > intervalHTTP) || (prevHTTP == 0)) {
+  if (((currentMillis - prevHTTP > intervalHTTP) || (prevHTTP == 0)) && (displayMode == 0)) {
     wifiConnected = (WiFiMulti.run() == WL_CONNECTED);
 
     if (wifiConnected) {
