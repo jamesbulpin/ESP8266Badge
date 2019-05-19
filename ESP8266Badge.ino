@@ -1,3 +1,4 @@
+
 // Christmas tree bauble countdown timer for ESP8266 with 128x32 OLED display
 
 #include <Arduino.h>
@@ -59,19 +60,26 @@ void startWiFi() {
   setupLocalWifiConfig(&WiFiMulti);
   //WiFiMulti.addAP("<SSID>", "<PSK>");
 
-  // Wait for WiFi connection
+  // Wait a little for WiFi connection
+  int attempts = 0;
   while (WiFiMulti.run() != WL_CONNECTED) {
     delay(250);
     USE_SERIAL.print('.');
+    attempts++;
+    if (attempts > 20) {
+      break;
+    }
   }
 
-  USE_SERIAL.println();
-  USE_SERIAL.print("SSID: ");
-  USE_SERIAL.println(WiFi.SSID());
-  USE_SERIAL.print("IP: ");
-  USE_SERIAL.println(WiFi.localIP());
-  USE_SERIAL.print("MAC: ");
-  USE_SERIAL.println(WiFi.macAddress());
+  if (WiFiMulti.run() == WL_CONNECTED) {
+    USE_SERIAL.println();
+    USE_SERIAL.print("SSID: ");
+    USE_SERIAL.println(WiFi.SSID());
+    USE_SERIAL.print("IP: ");
+    USE_SERIAL.println(WiFi.localIP());
+    USE_SERIAL.print("MAC: ");
+    USE_SERIAL.println(WiFi.macAddress());
+  }
 }
 
 void setup() {
@@ -89,7 +97,12 @@ void setup() {
   
   // Initialise the OLED display and show the Citrix logo
   display.init();
-  display.flipScreenVertically();
+  if (FLIP_SCREEN) {
+    display.flipScreenVertically();
+  }
+  else {
+    display.resetOrientation();
+  }
   display.setFont(ArialMT_Plain_16);
   display.drawXbm(0, 0, citrix_logo_width, citrix_logo_height, citrix_logo);
   display.setPixel(127,0);
@@ -150,6 +163,7 @@ void handleButtonInterrupt() {
 char *displayModeNames[] = {
   "Cloud",
   "Cycle",
+  "Display off",
   "SYN130",
   "Expo",
   "Logo"
@@ -158,6 +172,7 @@ char *displayModeNames[] = {
 char *displayModeColors[] = {
   NULL,
   NULL,
+  "#000000",
   "#00ff00",
   "#0000ff",
   "#00ffff"
@@ -165,21 +180,28 @@ char *displayModeColors[] = {
 
 void fnCycle();
 
-void fn2() {
+void fnOff() {
+  display.setPixel(127,0);
+  display.setPixel(0,0);
+  display.setPixel(127,31);
+  display.setPixel(0,31);
+}
+
+void fn3() {
   display.setFont(Dialog_plain_14);
   display.drawString(0, 0, "Join us at SYN130");
   display.setFont(ArialMT_Plain_10);
   display.drawString(0, 19, "#FutureOfWork 3pm");
 }
 
-void fn3() {
+void fn4() {
   display.setFont(Dialog_plain_14);
   display.drawString(0, 0, "See innovation!");
   display.setFont(ArialMT_Plain_10);
   display.drawString(0, 19, "Citrix Experience Center");
 }
 
-void fn4() {
+void fn5() {
   display.drawXbm(0, 0, citrix_logo_width, citrix_logo_height, citrix_logo);
 }
 
@@ -187,9 +209,10 @@ typedef void (*fn)();
 fn displayFunctions[] = {
   NULL,
   fnCycle,
-  fn2,
+  fnOff,
   fn3,
-  fn4
+  fn4,
+  fn5
 };
 
 void fnCycle() {
@@ -200,7 +223,7 @@ void fnCycle() {
     showThisUntil = currentMillis + 8000;
     toShow++;
     if (toShow == NUM_DISPLAY_MODES) {
-      toShow = 2;
+      toShow = 3;
     }
   }
   displayFunctions[toShow]();
@@ -246,9 +269,8 @@ void loop() {
   if (currentMillis - prevDisplay > intervalDisplay) {
     prevDisplay = currentMillis;
 
-    // Only update the display if we have a valid event description and target time
     display.clear();
-    if (strlen(description) > 0) {
+    if (true) {
       if (currentMillis < showLogoUntil) {
         // Show the Citrix logo
         display.drawXbm(0, 0, citrix_logo_width, citrix_logo_height, citrix_logo);        
@@ -261,7 +283,8 @@ void loop() {
       else if (displayMode > 0) {
         displayFunctions[displayMode]();
       }
-      else {
+      else if (strlen(description) > 0) {
+        // Only update the display if we have a valid event description and target time
         if (timerTarget > 0) {
           // Show a countdown timer and the event description
           unsigned long remaining = (timerTarget < currentSecs)?0:(timerTarget - currentSecs);
