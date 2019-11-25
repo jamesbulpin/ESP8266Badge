@@ -164,8 +164,8 @@ char *displayModeNames[] = {
   "Cloud",
   "Cycle",
   "Display off",
-  "SYN130",
-  "Expo",
+  "Session",
+  "WS",
   "Logo"
 };
 
@@ -189,16 +189,16 @@ void fnOff() {
 
 void fn3() {
   display.setFont(Dialog_plain_14);
-  display.drawString(0, 0, "Join us at SYN130");
+  display.drawString(0, 0, "See my session");
   display.setFont(ArialMT_Plain_10);
-  display.drawString(0, 19, "#FutureOfWork 3pm");
+  display.drawString(0, 19, "12 noon. Demos and more!");
 }
 
 void fn4() {
   display.setFont(Dialog_plain_14);
-  display.drawString(0, 0, "See innovation!");
+  display.drawString(0, 0, "Citrix Workspace");
   display.setFont(ArialMT_Plain_10);
-  display.drawString(0, 19, "Citrix Experience Center");
+  display.drawString(0, 19, "Organise, Guide, Automate");
 }
 
 void fn5() {
